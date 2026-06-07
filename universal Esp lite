@@ -1,0 +1,249 @@
+-- Auto ESP System for Specific Objects
+-- Automatically applies ESP to workspace.Ghost and workspace.Items.100
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local ESPData = {}
+
+-- Configuration
+local CONFIG = {
+    HIGHLIGHT_COLOR = Color3.fromRGB(255, 0, 0),
+    TEXT_COLOR = Color3.fromRGB(255, 255, 255),
+    DISTANCE_COLOR = Color3.fromRGB(255, 255, 0),
+    UPDATE_INTERVAL = 0.1 -- Update distance every 0.1 seconds
+}
+
+-- Target paths to monitor
+local TARGET_PATHS = {
+    "Ghost",
+    "Items.100"
+}
+
+-- Create ESP Components
+local function CreateESP(object)
+    if ESPData[object] then
+        return -- Already has ESP
+    end
+    
+    local espData = {
+        Object = object,
+        Highlight = nil,
+        Billboard = nil,
+        NameLabel = nil,
+        DistanceLabel = nil
+    }
+    
+    -- Create Highlight
+    local highlight = Instance.new("Highlight")
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.FillColor = CONFIG.HIGHLIGHT_COLOR
+    highlight.OutlineColor = CONFIG.HIGHLIGHT_COLOR
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = true
+    highlight.Parent = object
+    espData.Highlight = highlight
+    
+    -- Create Billboard GUI
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 200, 0, 80)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = object
+    espData.Billboard = billboard
+    
+    -- Name Label
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0, 35)
+    nameLabel.Position = UDim2.new(0, 0, 0, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = object.Name
+    nameLabel.TextColor3 = CONFIG.TEXT_COLOR
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextSize = 20
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextYAlignment = Enum.TextYAlignment.Top
+    nameLabel.Parent = billboard
+    espData.NameLabel = nameLabel
+    
+    -- Distance Label
+    local distanceLabel = Instance.new("TextLabel")
+    distanceLabel.Size = UDim2.new(1, 0, 0, 35)
+    distanceLabel.Position = UDim2.new(0, 0, 0, 35)
+    distanceLabel.BackgroundTransparency = 1
+    distanceLabel.Text = "0 studs"
+    distanceLabel.TextColor3 = CONFIG.DISTANCE_COLOR
+    distanceLabel.TextStrokeTransparency = 0
+    distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    distanceLabel.TextSize = 16
+    distanceLabel.Font = Enum.Font.Gotham
+    distanceLabel.TextYAlignment = Enum.TextYAlignment.Top
+    distanceLabel.Parent = billboard
+    espData.DistanceLabel = distanceLabel
+    
+    ESPData[object] = espData
+    
+    -- Cleanup when object is destroyed
+    object.AncestryChanged:Connect(function()
+        if not object:IsDescendantOf(game) then
+            if ESPData[object] then
+                if ESPData[object].Highlight then
+                    ESPData[object].Highlight:Destroy()
+                end
+                if ESPData[object].Billboard then
+                    ESPData[object].Billboard:Destroy()
+                end
+                ESPData[object] = nil
+            end
+        end
+    end)
+    
+    print("[ESP] Applied to:", object:GetFullName())
+end
+
+-- Get object position helper
+local function GetObjectPosition(object)
+    if object:IsA("Model") then
+        return object:GetPivot().Position
+    elseif object:IsA("BasePart") then
+        return object.Position
+    elseif object.PrimaryPart then
+        return object.PrimaryPart.Position
+    else
+        -- Try to find any BasePart in the model
+        local part = object:FindFirstChildWhichIsA("BasePart", true)
+        if part then
+            return part.Position
+        end
+    end
+    return nil
+end
+
+-- Apply ESP to target path
+local function ApplyESPToPath(path)
+    local parts = string.split(path, ".")
+    local current = workspace
+    
+    for _, part in ipairs(parts) do
+        current = current:FindFirstChild(part)
+        if not current then
+            return nil
+        end
+    end
+    
+    if current and current ~= workspace then
+        CreateESP(current)
+        return current
+    end
+    
+    return nil
+end
+
+-- Monitor for new objects
+local function MonitorPath(path)
+    local parts = string.split(path, ".")
+    local parentPath = table.concat(parts, ".", 1, #parts - 1)
+    local targetName = parts[#parts]
+    
+    local parent = workspace
+    if parentPath ~= "" then
+        for _, part in ipairs(string.split(parentPath, ".")) do
+            parent = parent:FindFirstChild(part)
+            if not parent then
+                -- Parent doesn't exist yet, monitor workspace for it
+                workspace.ChildAdded:Connect(function(child)
+                    if child.Name == string.split(parentPath, ".")[1] then
+                        task.wait(0.5) -- Give time for structure to build
+                        ApplyESPToPath(path)
+                    end
+                end)
+                return
+            end
+        end
+    end
+    
+    -- Monitor parent for target child
+    parent.ChildAdded:Connect(function(child)
+        if child.Name == targetName then
+            task.wait(0.1) -- Small delay to ensure object is fully loaded
+            CreateESP(child)
+        end
+    end)
+end
+
+-- Distance update loop
+local function StartDistanceUpdate()
+    local lastUpdate = 0
+    
+    RunService.Heartbeat:Connect(function()
+        local currentTime = tick()
+        if currentTime - lastUpdate < CONFIG.UPDATE_INTERVAL then
+            return
+        end
+        lastUpdate = currentTime
+        
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            return
+        end
+        
+        local playerPos = LocalPlayer.Character.HumanoidRootPart.Position
+        
+        for object, data in pairs(ESPData) do
+            if object and object.Parent and data.DistanceLabel then
+                local objectPos = GetObjectPosition(object)
+                if objectPos then
+                    local distance = (playerPos - objectPos).Magnitude
+                    data.DistanceLabel.Text = string.format("%.1f studs", distance)
+                end
+            end
+        end
+    end)
+end
+
+-- Initialize ESP System
+local function Initialize()
+    print("[ESP System] Initializing...")
+    
+    -- Apply ESP to existing objects
+    for _, path in ipairs(TARGET_PATHS) do
+        local obj = ApplyESPToPath(path)
+        if obj then
+            print("[ESP] Found and applied to:", path)
+        else
+            print("[ESP] Monitoring for:", path)
+            MonitorPath(path)
+        end
+    end
+    
+    -- Start distance updates
+    StartDistanceUpdate()
+    
+    print("[ESP System] Active! Monitoring targets:")
+    for _, path in ipairs(TARGET_PATHS) do
+        print("  - workspace." .. path)
+    end
+end
+
+-- Handle player respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1) -- Wait for character to fully load
+    -- Distance updates will resume automatically
+end)
+
+-- Cleanup on player removal
+Players.PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then
+        for _, data in pairs(ESPData) do
+            if data.Highlight then data.Highlight:Destroy() end
+            if data.Billboard then data.Billboard:Destroy() end
+        end
+        ESPData = {}
+    end
+end)
+
+-- Start the system
+Initialize()
