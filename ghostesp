@@ -1,4 +1,4 @@
--- Auto ESP System (Compact UI, Filtered Velocity synced to Real-Time display, Simplified Item ESP)
+-- Auto ESP System (Compact UI, Filtered Velocity from Display, Simplified Item ESP)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -56,7 +56,7 @@ local function CreateScreenUI()
     local playerVelLabel = Instance.new("TextLabel")
     playerVelLabel.Size = UDim2.new(1, 0, 0.5, 0)
     playerVelLabel.BackgroundTransparency = 1
-    playerVelLabel.Text = "Player Vel: 0"
+    playerVelLabel.Text = "Player Vel: 0.0"
     playerVelLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
     playerVelLabel.Font = Enum.Font.GothamMedium
     playerVelLabel.TextSize = 12 
@@ -66,7 +66,7 @@ local function CreateScreenUI()
     ghostMaxVelLabel.Size = UDim2.new(1, 0, 0.5, 0)
     ghostMaxVelLabel.Position = UDim2.new(0, 0, 0.5, 0)
     ghostMaxVelLabel.BackgroundTransparency = 1
-    ghostMaxVelLabel.Text = "Ghost Max: 0"
+    ghostMaxVelLabel.Text = "Ghost Max: 0.0"
     ghostMaxVelLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
     ghostMaxVelLabel.Font = Enum.Font.GothamMedium
     ghostMaxVelLabel.TextSize = 12 
@@ -131,7 +131,7 @@ local function CreateESP(object)
         velocityLabel.Size = UDim2.new(1, 0, 0, 35)
         velocityLabel.Position = UDim2.new(0, 0, 0, 25)
         velocityLabel.BackgroundTransparency = 1
-        velocityLabel.Text = "Vel: 0"
+        velocityLabel.Text = "Vel: 0.0"
         velocityLabel.TextColor3 = CONFIG.VELOCITY_COLOR
         velocityLabel.TextStrokeTransparency = 0
         velocityLabel.TextSize = 14
@@ -158,7 +158,7 @@ local function CreateESP(object)
         pole.Anchored = true
         pole.CanCollide = false
         pole.Color = CONFIG.POLE_COLOR
-        pole.Material = Enum.Material.SmoothPlastic 
+        pole.Material = Enum.Material.SmoothPlastic
         
         local poleHighlight = Instance.new("Highlight")
         poleHighlight.FillTransparency = 0.5
@@ -252,23 +252,20 @@ local function StartLogicLoop()
         local rootPart = LocalPlayer.Character.HumanoidRootPart
         local playerPos = rootPart.Position
         
-        -- Calculate & Round Player Velocity
-        local rawPlayerVel = rootPart.AssemblyLinearVelocity.Magnitude
-        local displayPlayerVel = tonumber(string.format("%.1f", rawPlayerVel)) or 0
-        PlayerVelUI.Text = "Player Vel: " .. displayPlayerVel
+        -- Calculate Player Velocity
+        local playerVelocity = rootPart.AssemblyLinearVelocity.Magnitude
+        PlayerVelUI.Text = string.format("Player Vel: %.1f", playerVelocity)
         
         for object, data in pairs(ESPData) do
             if object and object.Parent then
                 local objectPos = GetObjectPosition(object)
                 
                 if objectPos then
-                    -- Update Distance
                     if data.DistanceLabel then
                         local distance = (playerPos - objectPos).Magnitude
                         data.DistanceLabel.Text = string.format("%.1f studs", distance)
                     end
                     
-                    -- Velocity Calculation & Syncing
                     if data.VelocityLabel or data.Pole then
                         local rawVelocity = 0
                         if data.LastPosition then
@@ -276,20 +273,20 @@ local function StartLogicLoop()
                         end
                         data.LastPosition = objectPos
                         
-                        -- Round the velocity exactly as it will be displayed on the screen
+                        -- Convert raw calculation to the exact 1-decimal number displayed on the ESP
                         local displayVelocity = tonumber(string.format("%.1f", rawVelocity)) or 0
                         
-                        -- Update Real-Time Label
+                        -- Update Real-Time Label exactly with the formatted value
                         if data.VelocityLabel then
-                            data.VelocityLabel.Text = "Vel: " .. displayVelocity
+                            data.VelocityLabel.Text = string.format("Vel: %.1f", displayVelocity)
                         end
                         
                         -- Ghost Max Velocity & Tracking
                         if object.Name == "Ghost" then
-                            -- It now checks the exact rounded number shown on the real-time counter
+                            -- Check strictly against the number shown on the real-time counter
                             if displayVelocity > GhostMaxVelocity and displayVelocity <= CONFIG.MAX_REALISTIC_SPEED then
                                 GhostMaxVelocity = displayVelocity
-                                GhostMaxVelUI.Text = "Ghost Max: " .. GhostMaxVelocity
+                                GhostMaxVelUI.Text = string.format("Ghost Max: %.1f", GhostMaxVelocity)
                             end
                             
                             if data.Pole then
