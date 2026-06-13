@@ -1,102 +1,86 @@
--- Place inside StarterPlayer -> StarterPlayerScripts
-
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
 
 -- [[ CONFIGURATION ]] --
--- Adjust these values to control the speed of the initial texture removal.
-local BATCH_SIZE = 50      -- Number of objects to process before yielding
-local YIELD_TIME = 0.05    -- How long to wait between batches (in seconds)
+-- Number of objects to process per frame. 
+-- Lower = Slower process but zero lag spikes. Higher = Faster process but might stutter.
+local BATCH_SIZE = 100 
 
--- [[ 1. LIGHTING & TERRAIN OPTIMIZATION ]] --
-local function OptimizeLightingAndTerrain()
-	-- Disable Lighting overhead
-	Lighting.GlobalShadows = false
-	Lighting.FogEnd = 9e9
-	Lighting.FogStart = 9e9
-	Lighting.ShadowSoftness = 0
-	Lighting.EnvironmentDiffuseScale = 0
-	Lighting.EnvironmentSpecularScale = 0
-
-	-- Destroy visual atmosphere/post-processing
-	for _, obj in ipairs(Lighting:GetChildren()) do
-		if obj:IsA("PostEffect") or obj:IsA("Atmosphere") or obj:IsA("Sky") or obj:IsA("Clouds") then
-			obj:Destroy()
-		end
-	end
-
-	-- Optimize Terrain
-	local terrain = Workspace:FindFirstChildOfClass("Terrain")
-	if terrain then
-		terrain.WaterWaveSize = 0
-		terrain.WaterWaveSpeed = 0
-		terrain.WaterReflectance = 0
-		terrain.WaterTransparency = 0
-		terrain.Decoration = false
-	end
-end
-
--- [[ 2. CORE OBJECT PROCESSOR ]] --
-local function ProcessObject(obj)
-	-- Remove Textures
-	if obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+-- [[ CORE OPTIMIZATION FUNCTION ]] --
+local function optimizeObject(obj)
+	-- 1. Remove Textures, Decals, and PBR Textures
+	if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("SurfaceAppearance") then
 		obj:Destroy()
-
-	-- Remove Particles & Emitters
-	elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-		obj:Destroy()
-
-	-- Optimize BaseParts (Parts, MeshParts, Truss, etc.)
-	elseif obj:IsA("BasePart") and not obj:IsA("Terrain") then
+		
+	-- 2. Simplify standard parts
+	elseif obj:IsA("BasePart") then
 		obj.Material = Enum.Material.SmoothPlastic
 		obj.Reflectance = 0
-		obj.CastShadow = false
-
-		-- If it's a MeshPart, clear its baked texture ID
-		if obj:IsA("MeshPart") then
-			obj.TextureID = ""
-		end
-
-	-- Remove any rogue camera effects
-	elseif obj:IsA("PostEffect") then
-		obj:Destroy()
+		-- Note: MeshPart.TextureID is read-only at runtime in standard Roblox scripts.
+		-- Setting the material to SmoothPlastic is the safest standard way to flatten their look.
+		
+	-- 3. Disable visual effects
+	elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+		obj.Enabled = false
+		-- We set Enabled = false instead of Destroy() just in case the game's core scripts rely on them existing.
 	end
 end
 
--- [[ 3. SLOW REMOVAL LOOP ]] --
-local function ProcessExistingObjects()
+-- [[ LIGHTING AND FOG STRIPPER ]] --
+local function optimizeLighting()
+	Lighting.GlobalShadows = false
+	Lighting.FogEnd = 9e9 -- Pushes fog so far away it effectively disappears
+	Lighting.ShadowSoftness = 0
+	Lighting.Brightness = 2 -- Keeps the map well-lit for visual clarity
+	
+	-- Destroy post-processing, skies, clouds, and atmosphere
+	for _, effect in pairs(Lighting:GetChildren()) do
+		if effect:IsA("PostEffect") or effect:IsA("Atmosphere") or effect:IsA("Sky") or effect:IsA("Clouds") then
+			effect:Destroy()
+		end
+	end
+	
+	-- Keep an eye out for Lighting changes by the server and revert them
+	Lighting.Changed:Connect(function(property)
+		if property == "FogEnd" and Lighting.FogEnd < 9e9 then
+			Lighting.FogEnd = 9e9
+		elseif property == "GlobalShadows" and Lighting.GlobalShadows == true then
+			Lighting.GlobalShadows = false
+		end
+	end)
+end
+
+-- [[ PACED WORKSPACE SCANNER ]] --
+local function slowInitialScan()
 	local descendants = Workspace:GetDescendants()
-	local count = 0
-
-	for _, obj in ipairs(descendants) do
-		ProcessObject(obj)
-		count += 1
-
-		-- Yield to prevent freezing the client
-		if count >= BATCH_SIZE then
-			count = 0
-			task.wait(YIELD_TIME)
+	
+	for i, obj in ipairs(descendants) do
+		-- pcall ensures that if a locked object is scanned, the script won't break
+		pcall(optimizeObject, obj) 
+		
+		-- Yield the thread every BATCH_SIZE objects to prevent client freezing
+		if i % BATCH_SIZE == 0 then
+			RunService.Heartbeat:Wait()
 		end
 	end
+	print("Optimization: Initial scan complete.")
 end
 
--- [[ EXECUTION ]] --
+-- [[ INITIALIZATION ]] --
+print("Optimization: Script starting...")
 
--- Step 1: Nuke the lighting immediately (this doesn't cause lag)
-OptimizeLightingAndTerrain()
+-- 1. Clean the Lighting immediately
+optimizeLighting()
 
--- Step 2: Begin the slow removal of existing Workspace objects on a separate thread
-task.spawn(ProcessExistingObjects)
-
--- Step 3: Listen for any new objects added to the game and strip them instantly
+-- 2. Hook up the listener for newly loaded objects
 Workspace.DescendantAdded:Connect(function(obj)
-	ProcessObject(obj)
+	-- task.defer puts the function at the end of the execution queue for this frame.
+	-- This prevents stuttering if StreamingEnabled suddenly loads a massive chunk of map at once.
+	task.defer(function()
+		pcall(optimizeObject, obj)
+	end)
 end)
 
--- Optional Step 4: Ensure no scripts try to force new lighting effects
-Lighting.ChildAdded:Connect(function(obj)
-	if obj:IsA("PostEffect") or obj:IsA("Atmosphere") or obj:IsA("Sky") or obj:IsA("Clouds") then
-		task.wait() -- Wait one frame to ensure properties are loaded, then destroy
-		obj:Destroy()
-	end
-end)
+-- 3. Start the slow background scan
+task.spawn(slowInitialScan)
