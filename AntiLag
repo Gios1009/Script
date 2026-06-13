@@ -1,47 +1,85 @@
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 -- [[ CONFIGURATION ]] --
--- Number of objects to process per frame. 
--- Lower = Slower process but zero lag spikes. Higher = Faster process but might stutter.
 local BATCH_SIZE = 100 
 
--- [[ CORE OPTIMIZATION FUNCTION ]] --
+-- [[ 1. FPS COUNTER UI ]] --
+local function createFPSCounter()
+	local LocalPlayer = Players.LocalPlayer
+	local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+	
+	-- Create the ScreenGui
+	local fpsGui = Instance.new("ScreenGui")
+	fpsGui.Name = "FPSCounterGui"
+	fpsGui.ResetOnSpawn = false -- Keeps it on screen after you die
+	fpsGui.Parent = PlayerGui
+	
+	-- Create the TextLabel
+	local fpsLabel = Instance.new("TextLabel")
+	fpsLabel.Size = UDim2.new(0, 80, 0, 25)
+	fpsLabel.Position = UDim2.new(0.5, 0, 0, 5) -- Top middle, slightly offset from the very edge
+	fpsLabel.AnchorPoint = Vector2.new(0.5, 0)
+	fpsLabel.BackgroundTransparency = 0.5
+	fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+	fpsLabel.Font = Enum.Font.Code
+	fpsLabel.TextSize = 16
+	fpsLabel.Text = "FPS: --"
+	fpsLabel.Parent = fpsGui
+	
+	-- Update the FPS text cleanly
+	local lastUpdate = 0
+	RunService.RenderStepped:Connect(function(deltaTime)
+		local currentTime = os.clock()
+		-- Update 4 times a second to prevent the numbers from becoming a blurry mess
+		if currentTime - lastUpdate >= 0.25 then
+			local fps = math.floor(1 / deltaTime)
+			fpsLabel.Text = "FPS: " .. tostring(fps)
+			
+			-- Color coordinate based on performance
+			if fps >= 50 then
+				fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- Green
+			elseif fps >= 30 then
+				fpsLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Yellow
+			else
+				fpsLabel.TextColor3 = Color3.fromRGB(255, 0, 0) -- Red
+			end
+			
+			lastUpdate = currentTime
+		end
+	end)
+end
+
+-- [[ 2. CORE OPTIMIZATION FUNCTION ]] --
 local function optimizeObject(obj)
-	-- 1. Remove Textures, Decals, and PBR Textures
 	if obj:IsA("Texture") or obj:IsA("Decal") or obj:IsA("SurfaceAppearance") then
 		obj:Destroy()
 		
-	-- 2. Simplify standard parts
 	elseif obj:IsA("BasePart") then
 		obj.Material = Enum.Material.SmoothPlastic
 		obj.Reflectance = 0
-		-- Note: MeshPart.TextureID is read-only at runtime in standard Roblox scripts.
-		-- Setting the material to SmoothPlastic is the safest standard way to flatten their look.
 		
-	-- 3. Disable visual effects
 	elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
 		obj.Enabled = false
-		-- We set Enabled = false instead of Destroy() just in case the game's core scripts rely on them existing.
 	end
 end
 
--- [[ LIGHTING AND FOG STRIPPER ]] --
+-- [[ 3. LIGHTING AND FOG STRIPPER ]] --
 local function optimizeLighting()
 	Lighting.GlobalShadows = false
-	Lighting.FogEnd = 9e9 -- Pushes fog so far away it effectively disappears
+	Lighting.FogEnd = 9e9
 	Lighting.ShadowSoftness = 0
-	Lighting.Brightness = 2 -- Keeps the map well-lit for visual clarity
+	Lighting.Brightness = 2
 	
-	-- Destroy post-processing, skies, clouds, and atmosphere
 	for _, effect in pairs(Lighting:GetChildren()) do
 		if effect:IsA("PostEffect") or effect:IsA("Atmosphere") or effect:IsA("Sky") or effect:IsA("Clouds") then
 			effect:Destroy()
 		end
 	end
 	
-	-- Keep an eye out for Lighting changes by the server and revert them
 	Lighting.Changed:Connect(function(property)
 		if property == "FogEnd" and Lighting.FogEnd < 9e9 then
 			Lighting.FogEnd = 9e9
@@ -51,15 +89,13 @@ local function optimizeLighting()
 	end)
 end
 
--- [[ PACED WORKSPACE SCANNER ]] --
+-- [[ 4. PACED WORKSPACE SCANNER ]] --
 local function slowInitialScan()
 	local descendants = Workspace:GetDescendants()
 	
 	for i, obj in ipairs(descendants) do
-		-- pcall ensures that if a locked object is scanned, the script won't break
 		pcall(optimizeObject, obj) 
 		
-		-- Yield the thread every BATCH_SIZE objects to prevent client freezing
 		if i % BATCH_SIZE == 0 then
 			RunService.Heartbeat:Wait()
 		end
@@ -70,17 +106,18 @@ end
 -- [[ INITIALIZATION ]] --
 print("Optimization: Script starting...")
 
--- 1. Clean the Lighting immediately
+-- Build the UI
+createFPSCounter()
+
+-- Clean the Lighting
 optimizeLighting()
 
--- 2. Hook up the listener for newly loaded objects
+-- Hook up the listener for newly loaded objects
 Workspace.DescendantAdded:Connect(function(obj)
-	-- task.defer puts the function at the end of the execution queue for this frame.
-	-- This prevents stuttering if StreamingEnabled suddenly loads a massive chunk of map at once.
 	task.defer(function()
 		pcall(optimizeObject, obj)
 	end)
 end)
 
--- 3. Start the slow background scan
+-- Start the slow background scan
 task.spawn(slowInitialScan)
