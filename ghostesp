@@ -1,4 +1,4 @@
--- Auto ESP System (Compact UI, Filtered Velocity from Display, Simplified Item ESP)
+-- Auto ESP System (Exact Max Velocity Sync & Lower Opacity)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -15,7 +15,7 @@ local CONFIG = {
     DISTANCE_COLOR = Color3.fromRGB(255, 255, 0),
     VELOCITY_COLOR = Color3.fromRGB(0, 255, 255),
     POLE_COLOR = Color3.fromRGB(255, 0, 255),
-    MAX_REALISTIC_SPEED = 100 -- Anything higher is a teleport/spawn spike and will be ignored
+    MAX_REALISTIC_SPEED = 100
 }
 
 local TARGET_PATHS = {
@@ -56,7 +56,7 @@ local function CreateScreenUI()
     local playerVelLabel = Instance.new("TextLabel")
     playerVelLabel.Size = UDim2.new(1, 0, 0.5, 0)
     playerVelLabel.BackgroundTransparency = 1
-    playerVelLabel.Text = "Player Vel: 0.0"
+    playerVelLabel.Text = "Player Vel: 0"
     playerVelLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
     playerVelLabel.Font = Enum.Font.GothamMedium
     playerVelLabel.TextSize = 12 
@@ -66,7 +66,7 @@ local function CreateScreenUI()
     ghostMaxVelLabel.Size = UDim2.new(1, 0, 0.5, 0)
     ghostMaxVelLabel.Position = UDim2.new(0, 0, 0.5, 0)
     ghostMaxVelLabel.BackgroundTransparency = 1
-    ghostMaxVelLabel.Text = "Ghost Max: 0.0"
+    ghostMaxVelLabel.Text = "Ghost Max: 0"
     ghostMaxVelLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
     ghostMaxVelLabel.Font = Enum.Font.GothamMedium
     ghostMaxVelLabel.TextSize = 12 
@@ -94,10 +94,10 @@ local function CreateESP(object)
         LastPosition = nil
     }
     
-    -- Highlight (Applied to both Ghost and Items.100)
+    -- Highlight (Decreased Opacity by 50%)
     local highlight = Instance.new("Highlight")
-    highlight.FillTransparency = 0.5
-    highlight.OutlineTransparency = 0
+    highlight.FillTransparency = 0.75 -- Was 0.5
+    highlight.OutlineTransparency = 0.5 -- Was 0
     highlight.FillColor = CONFIG.HIGHLIGHT_COLOR
     highlight.OutlineColor = CONFIG.HIGHLIGHT_COLOR
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -112,7 +112,7 @@ local function CreateESP(object)
     billboard.Parent = object
     espData.Billboard = billboard
     
-    -- Name Label (Applied to both)
+    -- Name Label
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Size = UDim2.new(1, 0, 0, 35)
     nameLabel.BackgroundTransparency = 1
@@ -124,14 +124,14 @@ local function CreateESP(object)
     nameLabel.Parent = billboard
     espData.NameLabel = nameLabel
 
-    -- Ghost-Specific Additions (Velocity, Distance, and Pole)
+    -- Ghost-Specific Additions
     if object.Name == "Ghost" then
         -- Real-time Velocity Label
         local velocityLabel = Instance.new("TextLabel")
         velocityLabel.Size = UDim2.new(1, 0, 0, 35)
         velocityLabel.Position = UDim2.new(0, 0, 0, 25)
         velocityLabel.BackgroundTransparency = 1
-        velocityLabel.Text = "Vel: 0.0"
+        velocityLabel.Text = "Vel: 0"
         velocityLabel.TextColor3 = CONFIG.VELOCITY_COLOR
         velocityLabel.TextStrokeTransparency = 0
         velocityLabel.TextSize = 14
@@ -158,11 +158,12 @@ local function CreateESP(object)
         pole.Anchored = true
         pole.CanCollide = false
         pole.Color = CONFIG.POLE_COLOR
-        pole.Material = Enum.Material.SmoothPlastic
+        pole.Material = Enum.Material.SmoothPlastic 
         
+        -- Pole Highlight (Decreased Opacity by 50%)
         local poleHighlight = Instance.new("Highlight")
-        poleHighlight.FillTransparency = 0.5
-        poleHighlight.OutlineTransparency = 0
+        poleHighlight.FillTransparency = 0.75 
+        poleHighlight.OutlineTransparency = 0.5 
         poleHighlight.FillColor = CONFIG.POLE_COLOR
         poleHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         poleHighlight.Parent = pole
@@ -243,7 +244,7 @@ local function MonitorPath(path)
 end
 
 -- ==========================================
--- Main Logic Loop (Distance, Velocity, Tracking)
+-- Main Logic Loop (Distance, Exact Velocity, Tracking)
 -- ==========================================
 local function StartLogicLoop()
     RunService.Heartbeat:Connect(function(deltaTime)
@@ -273,17 +274,16 @@ local function StartLogicLoop()
                         end
                         data.LastPosition = objectPos
                         
-                        -- Convert raw calculation to the exact 1-decimal number displayed on the ESP
-                        local displayVelocity = tonumber(string.format("%.1f", rawVelocity)) or 0
+                        -- Strictly match what is displayed (round to 1 decimal place exactly)
+                        local displayVelocity = math.floor(rawVelocity * 10 + 0.5) / 10
                         
-                        -- Update Real-Time Label exactly with the formatted value
+                        -- Update Real-Time Label with exact rounded value
                         if data.VelocityLabel then
                             data.VelocityLabel.Text = string.format("Vel: %.1f", displayVelocity)
                         end
                         
-                        -- Ghost Max Velocity & Tracking
+                        -- Ghost Max Velocity strictly grabs the highest recorded displayVelocity
                         if object.Name == "Ghost" then
-                            -- Check strictly against the number shown on the real-time counter
                             if displayVelocity > GhostMaxVelocity and displayVelocity <= CONFIG.MAX_REALISTIC_SPEED then
                                 GhostMaxVelocity = displayVelocity
                                 GhostMaxVelUI.Text = string.format("Ghost Max: %.1f", GhostMaxVelocity)
