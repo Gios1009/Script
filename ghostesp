@@ -1,0 +1,323 @@
+-- Auto ESP System for Specific Objects (with Velocity Tracking & Ghost Pole)
+-- Automatically applies ESP, tracks velocities, and adds a visibility pole to the Ghost
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local ESPData = {}
+local GhostMaxVelocity = 0
+
+-- Configuration
+local CONFIG = {
+    HIGHLIGHT_COLOR = Color3.fromRGB(255, 0, 0),
+    TEXT_COLOR = Color3.fromRGB(255, 255, 255),
+    DISTANCE_COLOR = Color3.fromRGB(255, 255, 0),
+    VELOCITY_COLOR = Color3.fromRGB(0, 255, 255), -- Cyan for real-time velocity
+    POLE_COLOR = Color3.fromRGB(255, 0, 255) -- Magenta for the Ghost Pole
+}
+
+local TARGET_PATHS = {
+    "Ghost",
+    "Items.100"
+}
+
+-- ==========================================
+-- UI Setup: Top-Middle Velocity Tracker
+-- ==========================================
+local function CreateScreenUI()
+    -- Try to use CoreGui for exploit safety, fallback to PlayerGui
+    local uiParent = game:GetService("CoreGui")
+    pcall(function() uiParent = uiParent or LocalPlayer.PlayerGui end)
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "VelocityTrackerUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = uiParent
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 60)
+    frame.Position = UDim2.new(0.5, -125, 0, 20) -- Top middle
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    frame.BackgroundTransparency = 0.5
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = frame
+
+    local playerVelLabel = Instance.new("TextLabel")
+    playerVelLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    playerVelLabel.BackgroundTransparency = 1
+    playerVelLabel.Text = "Player Vel: 0"
+    playerVelLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    playerVelLabel.Font = Enum.Font.GothamBold
+    playerVelLabel.TextSize = 16
+    playerVelLabel.Parent = frame
+
+    local ghostMaxVelLabel = Instance.new("TextLabel")
+    ghostMaxVelLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    ghostMaxVelLabel.Position = UDim2.new(0, 0, 0.5, 0)
+    ghostMaxVelLabel.BackgroundTransparency = 1
+    ghostMaxVelLabel.Text = "Ghost Max Vel: 0"
+    ghostMaxVelLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    ghostMaxVelLabel.Font = Enum.Font.GothamBold
+    ghostMaxVelLabel.TextSize = 16
+    ghostMaxVelLabel.Parent = frame
+
+    return playerVelLabel, ghostMaxVelLabel
+end
+
+local PlayerVelUI, GhostMaxVelUI = CreateScreenUI()
+
+-- ==========================================
+-- ESP Components
+-- ==========================================
+local function CreateESP(object)
+    if ESPData[object] then return end
+    
+    local espData = {
+        Object = object,
+        Highlight = nil,
+        Billboard = nil,
+        NameLabel = nil,
+        DistanceLabel = nil,
+        VelocityLabel = nil,
+        Pole = nil,
+        LastPosition = nil
+    }
+    
+    -- Highlight
+    local highlight = Instance.new("Highlight")
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.FillColor = CONFIG.HIGHLIGHT_COLOR
+    highlight.OutlineColor = CONFIG.HIGHLIGHT_COLOR
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = object
+    espData.Highlight = highlight
+    
+    -- Billboard GUI
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 200, 0, 115) -- Taller to fit velocity
+    billboard.StudsOffset = Vector3.new(0, 4, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = object
+    espData.Billboard = billboard
+    
+    -- Name Label
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0, 35)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = object.Name
+    nameLabel.TextColor3 = CONFIG.TEXT_COLOR
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextSize = 20
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Parent = billboard
+    espData.NameLabel = nameLabel
+
+    -- Real-time Velocity Label (On top of ESP)
+    local velocityLabel = Instance.new("TextLabel")
+    velocityLabel.Size = UDim2.new(1, 0, 0, 35)
+    velocityLabel.Position = UDim2.new(0, 0, 0, 30)
+    velocityLabel.BackgroundTransparency = 1
+    velocityLabel.Text = "Vel: 0"
+    velocityLabel.TextColor3 = CONFIG.VELOCITY_COLOR
+    velocityLabel.TextStrokeTransparency = 0
+    velocityLabel.TextSize = 16
+    velocityLabel.Font = Enum.Font.Gotham
+    velocityLabel.Parent = billboard
+    espData.VelocityLabel = velocityLabel
+    
+    -- Distance Label
+    local distanceLabel = Instance.new("TextLabel")
+    distanceLabel.Size = UDim2.new(1, 0, 0, 35)
+    distanceLabel.Position = UDim2.new(0, 0, 0, 60)
+    distanceLabel.BackgroundTransparency = 1
+    distanceLabel.Text = "0 studs"
+    distanceLabel.TextColor3 = CONFIG.DISTANCE_COLOR
+    distanceLabel.TextStrokeTransparency = 0
+    distanceLabel.TextSize = 16
+    distanceLabel.Font = Enum.Font.Gotham
+    distanceLabel.Parent = billboard
+    espData.DistanceLabel = distanceLabel
+
+    -- Ghost-Specific: The Tracking Pole
+    if object.Name == "Ghost" then
+        local pole = Instance.new("Part")
+        pole.Size = Vector3.new(0.2, 8, 0.2) -- Thin and long
+        pole.Anchored = true
+        pole.CanCollide = false
+        pole.Color = CONFIG.POLE_COLOR
+        pole.Material = Enum.Material.Neon
+        
+        local poleHighlight = Instance.new("Highlight")
+        poleHighlight.FillTransparency = 0.5
+        poleHighlight.OutlineTransparency = 0
+        poleHighlight.FillColor = CONFIG.POLE_COLOR
+        poleHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        poleHighlight.Parent = pole
+        
+        pole.Parent = workspace
+        espData.Pole = pole
+    end
+    
+    ESPData[object] = espData
+    
+    -- Cleanup on destroy
+    object.AncestryChanged:Connect(function()
+        if not object:IsDescendantOf(game) then
+            if ESPData[object] then
+                if ESPData[object].Highlight then ESPData[object].Highlight:Destroy() end
+                if ESPData[object].Billboard then ESPData[object].Billboard:Destroy() end
+                if ESPData[object].Pole then ESPData[object].Pole:Destroy() end
+                ESPData[object] = nil
+            end
+        end
+    end)
+end
+
+-- Helper: Get Position
+local function GetObjectPosition(object)
+    if object:IsA("Model") then
+        return object:GetPivot().Position
+    elseif object:IsA("BasePart") then
+        return object.Position
+    elseif object.PrimaryPart then
+        return object.PrimaryPart.Position
+    else
+        local part = object:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.Position end
+    end
+    return nil
+end
+
+-- Setup Target Paths
+local function ApplyESPToPath(path)
+    local parts = string.split(path, ".")
+    local current = workspace
+    for _, part in ipairs(parts) do
+        current = current:FindFirstChild(part)
+        if not current then return nil end
+    end
+    if current and current ~= workspace then
+        CreateESP(current)
+        return current
+    end
+    return nil
+end
+
+local function MonitorPath(path)
+    local parts = string.split(path, ".")
+    local parentPath = table.concat(parts, ".", 1, #parts - 1)
+    local targetName = parts[#parts]
+    
+    local parent = workspace
+    if parentPath ~= "" then
+        for _, part in ipairs(string.split(parentPath, ".")) do
+            parent = parent:FindFirstChild(part)
+            if not parent then
+                workspace.ChildAdded:Connect(function(child)
+                    if child.Name == string.split(parentPath, ".")[1] then
+                        task.wait(0.5)
+                        ApplyESPToPath(path)
+                    end
+                end)
+                return
+            end
+        end
+    end
+    
+    parent.ChildAdded:Connect(function(child)
+        if child.Name == targetName then
+            task.wait(0.1)
+            CreateESP(child)
+        end
+    end)
+end
+
+-- ==========================================
+-- Main Logic Loop (Distance, Velocity, Tracking)
+-- ==========================================
+local function StartLogicLoop()
+    RunService.Heartbeat:Connect(function(deltaTime)
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+        
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        local playerPos = rootPart.Position
+        
+        -- Calculate Player Velocity
+        local playerVelocity = rootPart.AssemblyLinearVelocity.Magnitude
+        PlayerVelUI.Text = string.format("Player Vel: %.1f", playerVelocity)
+        
+        for object, data in pairs(ESPData) do
+            if object and object.Parent then
+                local objectPos = GetObjectPosition(object)
+                
+                if objectPos then
+                    -- Update Distance
+                    local distance = (playerPos - objectPos).Magnitude
+                    if data.DistanceLabel then
+                        data.DistanceLabel.Text = string.format("%.1f studs", distance)
+                    end
+                    
+                    -- Calculate Target Velocity
+                    local velocity = 0
+                    if data.LastPosition then
+                        velocity = (objectPos - data.LastPosition).Magnitude / deltaTime
+                    end
+                    data.LastPosition = objectPos
+                    
+                    -- Update ESP Velocity Label
+                    if data.VelocityLabel then
+                        data.VelocityLabel.Text = string.format("Vel: %.1f", velocity)
+                    end
+                    
+                    -- Ghost Specific Updates
+                    if object.Name == "Ghost" then
+                        -- Max Velocity Tracker
+                        if velocity > GhostMaxVelocity then
+                            GhostMaxVelocity = velocity
+                            GhostMaxVelUI.Text = string.format("Ghost Max Vel: %.1f", GhostMaxVelocity)
+                        end
+                        
+                        -- Update Tracking Pole Position
+                        if data.Pole then
+                            -- Keeps the pole straight up, right next to the Ghost (offset by 2 studs)
+                            data.Pole.CFrame = CFrame.new(objectPos + Vector3.new(2, 0, 0))
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Initialize
+local function Initialize()
+    for _, path in ipairs(TARGET_PATHS) do
+        if not ApplyESPToPath(path) then
+            MonitorPath(path)
+        end
+    end
+    StartLogicLoop()
+end
+
+-- Handle respawns & removals
+LocalPlayer.CharacterAdded:Connect(function() task.wait(1) end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then
+        for _, data in pairs(ESPData) do
+            if data.Highlight then data.Highlight:Destroy() end
+            if data.Billboard then data.Billboard:Destroy() end
+            if data.Pole then data.Pole:Destroy() end
+        end
+        ESPData = {}
+    end
+end)
+
+Initialize()
