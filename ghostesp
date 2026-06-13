@@ -1,4 +1,4 @@
--- Auto ESP System for Specific Objects (Compact UI & Filtered Velocity) v3
+-- Auto ESP System (Compact UI, Filtered Velocity, Simplified Item ESP)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -35,10 +35,9 @@ local function CreateScreenUI()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = uiParent
 
-    -- Smaller, cleaner background frame
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 160, 0, 46) -- Reduced size
-    frame.Position = UDim2.new(0.5, -80, 0, 15) -- Snug to the top
+    frame.Size = UDim2.new(0, 160, 0, 46) 
+    frame.Position = UDim2.new(0.5, -80, 0, 15) 
     frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     frame.BackgroundTransparency = 0.6
     frame.BorderSizePixel = 0
@@ -48,7 +47,6 @@ local function CreateScreenUI()
     uiCorner.CornerRadius = UDim.new(0, 6)
     uiCorner.Parent = frame
 
-    -- Subtle border for neatness
     local uiStroke = Instance.new("UIStroke")
     uiStroke.Color = Color3.fromRGB(100, 100, 100)
     uiStroke.Transparency = 0.5
@@ -61,7 +59,7 @@ local function CreateScreenUI()
     playerVelLabel.Text = "Player Vel: 0"
     playerVelLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
     playerVelLabel.Font = Enum.Font.GothamMedium
-    playerVelLabel.TextSize = 12 -- Smaller text
+    playerVelLabel.TextSize = 12 
     playerVelLabel.Parent = frame
 
     local ghostMaxVelLabel = Instance.new("TextLabel")
@@ -71,7 +69,7 @@ local function CreateScreenUI()
     ghostMaxVelLabel.Text = "Ghost Max: 0"
     ghostMaxVelLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
     ghostMaxVelLabel.Font = Enum.Font.GothamMedium
-    ghostMaxVelLabel.TextSize = 12 -- Smaller text
+    ghostMaxVelLabel.TextSize = 12 
     ghostMaxVelLabel.Parent = frame
 
     return playerVelLabel, ghostMaxVelLabel
@@ -96,7 +94,7 @@ local function CreateESP(object)
         LastPosition = nil
     }
     
-    -- Highlight
+    -- Highlight (Applied to both Ghost and Items.100)
     local highlight = Instance.new("Highlight")
     highlight.FillTransparency = 0.5
     highlight.OutlineTransparency = 0
@@ -108,13 +106,14 @@ local function CreateESP(object)
     
     -- Billboard GUI
     local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0, 200, 0, 115)
+    -- Make the Billboard shorter if it's an item, taller if it's the Ghost
+    billboard.Size = object.Name == "Ghost" and UDim2.new(0, 200, 0, 115) or UDim2.new(0, 200, 0, 40)
     billboard.StudsOffset = Vector3.new(0, 4, 0)
     billboard.AlwaysOnTop = true
     billboard.Parent = object
     espData.Billboard = billboard
     
-    -- Name Label
+    -- Name Label (Applied to both)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Size = UDim2.new(1, 0, 0, 35)
     nameLabel.BackgroundTransparency = 1
@@ -126,40 +125,41 @@ local function CreateESP(object)
     nameLabel.Parent = billboard
     espData.NameLabel = nameLabel
 
-    -- Real-time Velocity Label
-    local velocityLabel = Instance.new("TextLabel")
-    velocityLabel.Size = UDim2.new(1, 0, 0, 35)
-    velocityLabel.Position = UDim2.new(0, 0, 0, 25)
-    velocityLabel.BackgroundTransparency = 1
-    velocityLabel.Text = "Vel: 0"
-    velocityLabel.TextColor3 = CONFIG.VELOCITY_COLOR
-    velocityLabel.TextStrokeTransparency = 0
-    velocityLabel.TextSize = 14
-    velocityLabel.Font = Enum.Font.Gotham
-    velocityLabel.Parent = billboard
-    espData.VelocityLabel = velocityLabel
-    
-    -- Distance Label
-    local distanceLabel = Instance.new("TextLabel")
-    distanceLabel.Size = UDim2.new(1, 0, 0, 35)
-    distanceLabel.Position = UDim2.new(0, 0, 0, 50)
-    distanceLabel.BackgroundTransparency = 1
-    distanceLabel.Text = "0 studs"
-    distanceLabel.TextColor3 = CONFIG.DISTANCE_COLOR
-    distanceLabel.TextStrokeTransparency = 0
-    distanceLabel.TextSize = 14
-    distanceLabel.Font = Enum.Font.Gotham
-    distanceLabel.Parent = billboard
-    espData.DistanceLabel = distanceLabel
-
-    -- Ghost Visibility Pole
+    -- Ghost-Specific Additions (Velocity, Distance, and Pole)
     if object.Name == "Ghost" then
+        -- Real-time Velocity Label
+        local velocityLabel = Instance.new("TextLabel")
+        velocityLabel.Size = UDim2.new(1, 0, 0, 35)
+        velocityLabel.Position = UDim2.new(0, 0, 0, 25)
+        velocityLabel.BackgroundTransparency = 1
+        velocityLabel.Text = "Vel: 0"
+        velocityLabel.TextColor3 = CONFIG.VELOCITY_COLOR
+        velocityLabel.TextStrokeTransparency = 0
+        velocityLabel.TextSize = 14
+        velocityLabel.Font = Enum.Font.Gotham
+        velocityLabel.Parent = billboard
+        espData.VelocityLabel = velocityLabel
+        
+        -- Distance Label
+        local distanceLabel = Instance.new("TextLabel")
+        distanceLabel.Size = UDim2.new(1, 0, 0, 35)
+        distanceLabel.Position = UDim2.new(0, 0, 0, 50)
+        distanceLabel.BackgroundTransparency = 1
+        distanceLabel.Text = "0 studs"
+        distanceLabel.TextColor3 = CONFIG.DISTANCE_COLOR
+        distanceLabel.TextStrokeTransparency = 0
+        distanceLabel.TextSize = 14
+        distanceLabel.Font = Enum.Font.Gotham
+        distanceLabel.Parent = billboard
+        espData.DistanceLabel = distanceLabel
+
+        -- Ghost Visibility Pole
         local pole = Instance.new("Part")
         pole.Size = Vector3.new(0.2, 8, 0.2)
         pole.Anchored = true
         pole.CanCollide = false
         pole.Color = CONFIG.POLE_COLOR
-        pole.Material = Enum.Material.Neon
+        pole.Material = Enum.Material.SmoothPlastic -- Changed from Neon to Normal (SmoothPlastic)
         
         local poleHighlight = Instance.new("Highlight")
         poleHighlight.FillTransparency = 0.5
@@ -262,35 +262,34 @@ local function StartLogicLoop()
                 local objectPos = GetObjectPosition(object)
                 
                 if objectPos then
-                    -- Distance Update
-                    local distance = (playerPos - objectPos).Magnitude
+                    -- These only update if the label actually exists (which is now only true for the Ghost)
                     if data.DistanceLabel then
+                        local distance = (playerPos - objectPos).Magnitude
                         data.DistanceLabel.Text = string.format("%.1f studs", distance)
                     end
                     
-                    -- Velocity Calculation
-                    local velocity = 0
-                    if data.LastPosition then
-                        velocity = (objectPos - data.LastPosition).Magnitude / deltaTime
-                    end
-                    data.LastPosition = objectPos
-                    
-                    -- Update Real-Time Label
-                    if data.VelocityLabel then
-                        data.VelocityLabel.Text = string.format("Vel: %.1f", velocity)
-                    end
-                    
-                    -- Ghost Specific Updates
-                    if object.Name == "Ghost" then
-                        -- MAX VELOCITY FILTER: Ignores spikes above MAX_REALISTIC_SPEED
-                        if velocity > GhostMaxVelocity and velocity <= CONFIG.MAX_REALISTIC_SPEED then
-                            GhostMaxVelocity = velocity
-                            GhostMaxVelUI.Text = string.format("Ghost Max: %.1f", GhostMaxVelocity)
+                    if data.VelocityLabel or data.Pole then
+                        local velocity = 0
+                        if data.LastPosition then
+                            velocity = (objectPos - data.LastPosition).Magnitude / deltaTime
+                        end
+                        data.LastPosition = objectPos
+                        
+                        -- Update Real-Time Label
+                        if data.VelocityLabel then
+                            data.VelocityLabel.Text = string.format("Vel: %.1f", velocity)
                         end
                         
-                        -- Keep pole attached to Ghost
-                        if data.Pole then
-                            data.Pole.CFrame = CFrame.new(objectPos + Vector3.new(2, 0, 0))
+                        -- Ghost Max Velocity & Tracking
+                        if object.Name == "Ghost" then
+                            if velocity > GhostMaxVelocity and velocity <= CONFIG.MAX_REALISTIC_SPEED then
+                                GhostMaxVelocity = velocity
+                                GhostMaxVelUI.Text = string.format("Ghost Max: %.1f", GhostMaxVelocity)
+                            end
+                            
+                            if data.Pole then
+                                data.Pole.CFrame = CFrame.new(objectPos + Vector3.new(2, 0, 0))
+                            end
                         end
                     end
                 end
