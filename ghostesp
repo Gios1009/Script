@@ -1,4 +1,4 @@
--- Auto ESP System (Compact UI, Filtered Velocity, Simplified Item ESP)
+-- Auto ESP System (Compact UI, Filtered Velocity synced to Real-Time display, Simplified Item ESP)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -106,7 +106,6 @@ local function CreateESP(object)
     
     -- Billboard GUI
     local billboard = Instance.new("BillboardGui")
-    -- Make the Billboard shorter if it's an item, taller if it's the Ghost
     billboard.Size = object.Name == "Ghost" and UDim2.new(0, 200, 0, 115) or UDim2.new(0, 200, 0, 40)
     billboard.StudsOffset = Vector3.new(0, 4, 0)
     billboard.AlwaysOnTop = true
@@ -159,7 +158,7 @@ local function CreateESP(object)
         pole.Anchored = true
         pole.CanCollide = false
         pole.Color = CONFIG.POLE_COLOR
-        pole.Material = Enum.Material.SmoothPlastic -- Changed from Neon to Normal (SmoothPlastic)
+        pole.Material = Enum.Material.SmoothPlastic 
         
         local poleHighlight = Instance.new("Highlight")
         poleHighlight.FillTransparency = 0.5
@@ -253,38 +252,44 @@ local function StartLogicLoop()
         local rootPart = LocalPlayer.Character.HumanoidRootPart
         local playerPos = rootPart.Position
         
-        -- Calculate Player Velocity
-        local playerVelocity = rootPart.AssemblyLinearVelocity.Magnitude
-        PlayerVelUI.Text = string.format("Player Vel: %.1f", playerVelocity)
+        -- Calculate & Round Player Velocity
+        local rawPlayerVel = rootPart.AssemblyLinearVelocity.Magnitude
+        local displayPlayerVel = tonumber(string.format("%.1f", rawPlayerVel)) or 0
+        PlayerVelUI.Text = "Player Vel: " .. displayPlayerVel
         
         for object, data in pairs(ESPData) do
             if object and object.Parent then
                 local objectPos = GetObjectPosition(object)
                 
                 if objectPos then
-                    -- These only update if the label actually exists (which is now only true for the Ghost)
+                    -- Update Distance
                     if data.DistanceLabel then
                         local distance = (playerPos - objectPos).Magnitude
                         data.DistanceLabel.Text = string.format("%.1f studs", distance)
                     end
                     
+                    -- Velocity Calculation & Syncing
                     if data.VelocityLabel or data.Pole then
-                        local velocity = 0
+                        local rawVelocity = 0
                         if data.LastPosition then
-                            velocity = (objectPos - data.LastPosition).Magnitude / deltaTime
+                            rawVelocity = (objectPos - data.LastPosition).Magnitude / deltaTime
                         end
                         data.LastPosition = objectPos
                         
+                        -- Round the velocity exactly as it will be displayed on the screen
+                        local displayVelocity = tonumber(string.format("%.1f", rawVelocity)) or 0
+                        
                         -- Update Real-Time Label
                         if data.VelocityLabel then
-                            data.VelocityLabel.Text = string.format("Vel: %.1f", velocity)
+                            data.VelocityLabel.Text = "Vel: " .. displayVelocity
                         end
                         
                         -- Ghost Max Velocity & Tracking
                         if object.Name == "Ghost" then
-                            if velocity > GhostMaxVelocity and velocity <= CONFIG.MAX_REALISTIC_SPEED then
-                                GhostMaxVelocity = velocity
-                                GhostMaxVelUI.Text = string.format("Ghost Max: %.1f", GhostMaxVelocity)
+                            -- It now checks the exact rounded number shown on the real-time counter
+                            if displayVelocity > GhostMaxVelocity and displayVelocity <= CONFIG.MAX_REALISTIC_SPEED then
+                                GhostMaxVelocity = displayVelocity
+                                GhostMaxVelUI.Text = "Ghost Max: " .. GhostMaxVelocity
                             end
                             
                             if data.Pole then
